@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema Contas (Sabesp + Enel)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f3f3f3;
+      padding: 40px;
+    }
+    .box {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      max-width: 900px;
+      margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 10px;
+      margin-top: 15px;
+      max-height: 200px;
+      overflow: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: center;
+      font-size: 13px;
+    }
+    th {
+      background: #eee;
+    }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h2>📄 Sistema de Contas (Sabesp + Enel)</h2>
+
+  <button onclick="baixar('sabesp')">Baixar Sabesp</button>
+  <button onclick="baixar('enel')">Baixar Enel</button>
+
+  <pre id="log">Clique em um botão para iniciar...</pre>
+
+  <h3>📊 Dados extraídos</h3>
+  <table id="tabela">
+    <thead>
+      <tr></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <br>
+  <a id="linkCSV" href="#" download style="display:none;">⬇️ Baixar CSV</a>
+</div>
+
+<script>
+async function baixar(tipo) {
+  const log = document.getElementById("log");
+  const tabelaBody = document.querySelector("#tabela tbody");
+  const tabelaHead = document.querySelector("#tabela thead tr");
+  const linkCSV = document.getElementById("linkCSV");
+
+  log.textContent = "⏳ Processando " + tipo.toUpperCase() + "...\n";
+  tabelaBody.innerHTML = "";
+  tabelaHead.innerHTML = "";
+  linkCSV.style.display = "none";
+
+  try {
+    const resp = await fetch("http://127.0.0.1:8000/baixar-" + tipo, {
+      method: "POST"
+    });
+
+    if (!resp.ok) {
+      throw new Error("Erro HTTP: " + resp.status);
+    }
+
+    const csvText = await resp.text();
+
+    if (!csvText.trim()) {
+      log.textContent += "\n⚠️ CSV vazio.";
+      return;
+    }
+
+    log.textContent += "\n✅ Finalizado!\n";
+
+    const linhas = csvText.split("\n").filter(l => l.trim());
+
+    const cabecalho = linhas[0].split(";");
+
+    cabecalho.forEach(col => {
+      const th = document.createElement("th");
+      th.textContent = col;
+      tabelaHead.appendChild(th);
+    });
+
+    linhas.slice(1).forEach(linha => {
+      const cols = linha.split(";");
+      const tr = document.createElement("tr");
+
+      cols.forEach(col => {
+        const td = document.createElement("td");
+        td.textContent = col;
+        tr.appendChild(td);
+      });
+
+      tabelaBody.appendChild(tr);
+    });
+
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    linkCSV.href = url;
+    linkCSV.download = tipo + "_consolidado.csv";
+    linkCSV.style.display = "inline";
+
+  } catch (err) {
+    log.textContent += "\n❌ Erro: " + err.message;
+  }
+}
+</script>
+
+</body>
+</html>
