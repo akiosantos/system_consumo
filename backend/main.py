@@ -26,7 +26,7 @@ BASE_DIR = r"U:\BackupContabilidade\Custos\0 - Enel, Sabesp e Telefônica - Luca
 # ===== SABESP =====
 EMAIL_SABESP = "seu_email"
 SENHA_SABESP = "sua senha"
-REMETENTE_SABESP = "fatura_sabesp@sabesp.com.br"
+REMETENTE_SABESP = "seu_email@e-mail.com.br"
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
 PASTA_SABESP_SEM_SENHA = os.path.join(BASE_DIR, "sabesp_pdf_sem_senha")
@@ -37,7 +37,7 @@ SENHAS_SABESP = ["465", "MIG"]
 # ===== ENEL =====
 EMAIL_ENEL = "seu_email"
 SENHA_ENEL = "sua senha"
-REMETENTE_ENEL = "brasil.enel.com"
+REMETENTE_ENEL = "seu_email.email.com"
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
 PASTA_ENEL_SEM_SENHA = os.path.join(BASE_DIR, "enel_pdf_sem_senha")
@@ -509,5 +509,6 @@ def baixar_enel():
         filename="enel_consolidado.csv",
         media_type="text/csv"
     )
+
 
 
