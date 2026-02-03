@@ -24,7 +24,7 @@ IMAP_SERVER = "mail.barueri.sp.gov.br"
 BASE_DIR = r"U:\BackupContabilidade\Custos\0 - Enel, Sabesp e Telefônica - Lucas\system\backend"
 
 # ===== SABESP =====
-EMAIL_SABESP = "financas.sabesp@barueri.sp.gov.br"
+EMAIL_SABESP = "seu_email"
 SENHA_SABESP = "sua senha"
 REMETENTE_SABESP = "fatura_sabesp@sabesp.com.br"
 
@@ -35,7 +35,7 @@ CSV_SABESP = os.path.join(BASE_DIR, "sabesp_consolidado.csv")
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = "sf.contasdeconsumo@barueri.sp.gov.br"
+EMAIL_ENEL = "seu_email"
 SENHA_ENEL = "sua senha"
 REMETENTE_ENEL = "brasil.enel.com"
 
@@ -509,4 +509,5 @@ def baixar_enel():
         filename="enel_consolidado.csv",
         media_type="text/csv"
     )
+
 
