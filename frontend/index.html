@@ -82,7 +82,7 @@ async function baixar(tipo) {
   linkCSV.style.display = "none";
 
   try {
-    const resp = await fetch("http://127.0.0.1:8000/baixar-" + tipo, {
+    const resp = await fetch("http://192.168.0.117:8000/baixar-" + tipo, {
       method: "POST"
     });
 
