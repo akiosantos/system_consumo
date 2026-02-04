@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import imaplib
 import email
 import os
@@ -21,12 +22,15 @@ app.add_middleware(
 
 IMAP_SERVER = "mail.barueri.sp.gov.br"
 
-BASE_DIR = r"U:\BackupContabilidade\Custos\0 - Enel, Sabesp e Telefônica - Lucas\system\backend"
+SYSTEM_DIR = r"U:\BackupContabilidade\Custos\0 - Enel, Sabesp e Telefônica - Lucas\system"
+BASE_DIR = os.path.join(SYSTEM_DIR, "backend")
+FRONT_DIR = os.path.join(SYSTEM_DIR, "frontend")
+
 
 # ===== SABESP =====
-EMAIL_SABESP = "seu_email"
-SENHA_SABESP = "sua senha"
-REMETENTE_SABESP = "seu_email@e-mail.com.br"
+EMAIL_SABESP = "financas.sabesp@barueri.sp.gov.br"
+SENHA_SABESP = "Sabesp2024@"
+REMETENTE_SABESP = "fatura_sabesp@sabesp.com.br"
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
 PASTA_SABESP_SEM_SENHA = os.path.join(BASE_DIR, "sabesp_pdf_sem_senha")
@@ -35,9 +39,9 @@ CSV_SABESP = os.path.join(BASE_DIR, "sabesp_consolidado.csv")
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = "seu_email"
-SENHA_ENEL = "sua senha"
-REMETENTE_ENEL = "seu_email.email.com"
+EMAIL_ENEL = "sf.contasdeconsumo@barueri.sp.gov.br"
+SENHA_ENEL = "Contab.23@"
+REMETENTE_ENEL = "brasil.enel.com"
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
 PASTA_ENEL_SEM_SENHA = os.path.join(BASE_DIR, "enel_pdf_sem_senha")
@@ -437,6 +441,14 @@ def baixar_sabesp():
     mail.logout()
     extrair_dados_sabesp()
 
+# ===== SALVA FALHAS DE SENHA EM ARQUIVO =====
+    if falha_senha:
+        caminho_log = os.path.join(BASE_DIR, "sabesp_falha_senha.txt")
+        with open(caminho_log, "w", encoding="utf-8") as f:
+            for nome in falha_senha:
+                f.write(nome + "\n")
+            
+
     return FileResponse(
         path=CSV_SABESP,
         filename="sabesp_consolidado.csv",
@@ -509,6 +521,5 @@ def baixar_enel():
         filename="enel_consolidado.csv",
         media_type="text/csv"
     )
-
-
-
+# ===== SERVIR FRONTEND =====
+app.mount("/", StaticFiles(directory=FRONT_DIR, html=True), name="frontend")
