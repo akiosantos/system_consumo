@@ -28,9 +28,9 @@ FRONT_DIR = os.path.join(SYSTEM_DIR, "frontend")
 
 
 # ===== SABESP =====
-EMAIL_SABESP = "financas.sabesp@barueri.sp.gov.br"
-SENHA_SABESP = "Sabesp2024@"
-REMETENTE_SABESP = "fatura_sabesp@sabesp.com.br"
+EMAIL_SABESP = "seu_email"
+SENHA_SABESP = "sua_senha"
+REMETENTE_SABESP = "email_remetente"
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
 PASTA_SABESP_SEM_SENHA = os.path.join(BASE_DIR, "sabesp_pdf_sem_senha")
@@ -39,9 +39,9 @@ CSV_SABESP = os.path.join(BASE_DIR, "sabesp_consolidado.csv")
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = "sf.contasdeconsumo@barueri.sp.gov.br"
-SENHA_ENEL = "Contab.23@"
-REMETENTE_ENEL = "brasil.enel.com"
+EMAIL_ENEL = "seu_email"
+SENHA_ENEL = "sua_senha"
+REMETENTE_ENEL = "email_remetente"
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
 PASTA_ENEL_SEM_SENHA = os.path.join(BASE_DIR, "enel_pdf_sem_senha")
@@ -523,3 +523,4 @@ def baixar_enel():
     )
 # ===== SERVIR FRONTEND =====
 app.mount("/", StaticFiles(directory=FRONT_DIR, html=True), name="frontend")
+
