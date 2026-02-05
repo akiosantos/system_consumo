@@ -71,17 +71,20 @@
 
 <script>
 async function baixar(tipo) {
+
   const log = document.getElementById("log");
   const tabelaBody = document.querySelector("#tabela tbody");
   const tabelaHead = document.querySelector("#tabela thead tr");
   const linkCSV = document.getElementById("linkCSV");
 
   log.textContent = "⏳ Processando " + tipo.toUpperCase() + "...\n";
+
   tabelaBody.innerHTML = "";
   tabelaHead.innerHTML = "";
   linkCSV.style.display = "none";
 
   try {
+
     const resp = await fetch("http://192.168.0.117:8000/baixar-" + tipo, {
       method: "POST"
     });
@@ -90,49 +93,100 @@ async function baixar(tipo) {
       throw new Error("Erro HTTP: " + resp.status);
     }
 
-    const csvText = await resp.text();
+    const resposta = await resp.text();
 
-    if (!csvText.trim()) {
-      log.textContent += "\n⚠️ CSV vazio.";
+    console.log("Resposta recebida:");
+    console.log(resposta);
+
+    if (!resposta || resposta.trim() === "") {
+
+      log.textContent += "\n⚠️ Nenhum dado retornado.";
       return;
+
     }
 
-    log.textContent += "\n✅ Finalizado!\n";
+    // separar erros e CSV
+    const linhas = resposta.split("\n");
 
-    const linhas = csvText.split("\n").filter(l => l.trim());
+    const linhasErro = linhas.filter(l => l.includes("❌"));
+    const linhasCSV = linhas.filter(l => l.trim() && !l.includes("❌"));
 
-    const cabecalho = linhas[0].split(";");
+    // mostrar erros
+    if (linhasErro.length > 0) {
+
+      log.textContent += "\n⚠️ Foram encontrados erros:\n";
+
+      linhasErro.forEach(l => {
+        log.textContent += l + "\n";
+      });
+
+    }
+
+    if (linhasCSV.length === 0) {
+
+      log.textContent += "\n⚠️ Nenhum dado CSV válido.";
+      return;
+
+    }
+
+    log.textContent += "\n✅ CSV " + tipo.toUpperCase() + " carregado.\n";
+
+    // montar tabela
+    const cabecalho = linhasCSV[0].split(";");
 
     cabecalho.forEach(col => {
+
       const th = document.createElement("th");
       th.textContent = col;
       tabelaHead.appendChild(th);
+
     });
 
-    linhas.slice(1).forEach(linha => {
+    linhasCSV.slice(1).forEach(linha => {
+
       const cols = linha.split(";");
+
       const tr = document.createElement("tr");
 
       cols.forEach(col => {
+
         const td = document.createElement("td");
         td.textContent = col;
         tr.appendChild(td);
+
       });
 
       tabelaBody.appendChild(tr);
+
     });
 
-    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+    // botão download
+    const csvLimpo = linhasCSV.join("\n");
+
+    const blob = new Blob([csvLimpo], {
+      type: "text/csv;charset=utf-8;"
+    });
+
     const url = URL.createObjectURL(blob);
+
     linkCSV.href = url;
     linkCSV.download = tipo + "_consolidado.csv";
     linkCSV.style.display = "inline";
 
-  } catch (err) {
-    log.textContent += "\n❌ Erro: " + err.message;
+    log.textContent += "\n📥 Botão de download disponível.";
+
   }
+  catch (err) {
+
+    log.textContent += "\n❌ Erro: " + err.message;
+    console.error(err);
+
+  }
+
 }
+
 </script>
+
 
 </body>
 </html>
