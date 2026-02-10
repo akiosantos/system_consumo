@@ -1,3 +1,4 @@
+from email.utils import parseaddr
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -40,8 +41,11 @@ PDF_SABESP_COM_CODIGO = os.path.join(BASE_DIR, "sabesp_com_codigo.pdf")
 
 # ===== SABESP =====
 EMAIL_SABESP = "seu_email"
-SENHA_SABESP = "Sua Senha"
-REMETENTE_SABESP = "email_remetente"
+SENHA_SABESP = "sua_senha"
+REMETENTES_SABESP = [
+    "email@remetente",
+    "email@remetente1"
+]
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
 PASTA_SABESP_SEM_SENHA = os.path.join(BASE_DIR, "sabesp_pdf_sem_senha")
@@ -53,8 +57,8 @@ SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
 EMAIL_ENEL = "seu_email"
-SENHA_ENEL = "Sua Senha"
-REMETENTE_ENEL = "email_remetente"
+SENHA_ENEL = "sua_senha"
+REMETENTE_ENEL = "email@remetente"
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
 PASTA_ENEL_SEM_SENHA = os.path.join(BASE_DIR, "enel_pdf_sem_senha")
@@ -668,9 +672,6 @@ def baixar_enel():
         media_type="text/plain; charset=utf-8"
     )
 
-
-
-
 # ================= ENDPOINT SABESP =================
 @app.post("/baixar-sabesp")
 def baixar_sabesp():
@@ -691,11 +692,22 @@ def baixar_sabesp():
         status, dados = mail.fetch(num, "(RFC822)")
         msg = email.message_from_bytes(dados[0][1])
 
-        if REMETENTE_SABESP in msg.get("From","").lower():
+        remetente_email = parseaddr(msg.get("From"))[1].lower()
+
+        if remetente_email in REMETENTES_SABESP:
+
+            print("EMAIL ACEITO PELO SISTEMA")
 
             for parte in msg.walk():
 
-                if parte.get_content_disposition() == "attachment":
+                print("TIPO:", parte.get_content_type())
+                print("DISPOSITION:", parte.get_content_disposition())
+                print("ARQUIVO:", parte.get_filename())
+                print("----------------------------")
+
+                filename = parte.get_filename()
+
+                if filename and filename.lower().endswith(".pdf"):
 
                     nome = f"sabesp_{num.decode()}_{decodificar(parte.get_filename() or 'fatura.pdf')}"
 
@@ -722,7 +734,6 @@ def baixar_sabesp():
                             print(erro_msg)
 
                             erros.append(erro_msg)
-
 
                             continue
 
@@ -758,7 +769,6 @@ def baixar_sabesp():
 
     # extrair dados normalmente
     extrair_dados_sabesp(PDF_SABESP_COM_CODIGO)
-
 
     from fastapi.responses import Response
 
