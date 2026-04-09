@@ -8,7 +8,9 @@ import email
 import os
 from email.header import decode_header
 from pypdf import PdfReader, PdfWriter
+from fastapi.responses import FileResponse, StreamingResponse
 import pdfplumber
+import shutil
 import re
 import csv
 from openpyxl import load_workbook
@@ -38,40 +40,40 @@ ABA_SABESP = "SABESP 2026"
 
 PDF_SABESP_COM_CODIGO = os.path.join(BASE_DIR, "sabesp_com_codigo.pdf")
 
-
 # ===== SABESP =====
-EMAIL_SABESP = "seu_email"
-SENHA_SABESP = "sua_senha"
+EMAIL_SABESP = os.getenv("EMAIL_SABESP", "seu_email")
+SENHA_SABESP = os.getenv("SENHA_SABESP", "sua_senha")
 REMETENTES_SABESP = [
-    "email@remetente",
-    "email@remetente1"
+    "e-mail_remetente1r",
+    "e-mail_remetente2"
 ]
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
 PASTA_SABESP_SEM_SENHA = os.path.join(BASE_DIR, "sabesp_pdf_sem_senha")
 CSV_SABESP = os.path.join(BASE_DIR, "sabesp_consolidado.csv")
-
 PDF_SABESP_COMPLETO = os.path.join(BASE_DIR, "sabesp_completo.pdf")
-
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = "seu_email"
-SENHA_ENEL = "sua_senha"
-REMETENTE_ENEL = "email@remetente"
+EMAIL_ENEL = os.getenv("EMAIL_ENEL", "seu_email")
+SENHA_ENEL = os.getenv("SENHA_ENEL", "sua_senha")
+REMETENTE_ENEL = [
+    "e-mail_remetente1",
+    "e-mail_remetente2"
+]
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
 PASTA_ENEL_SEM_SENHA = os.path.join(BASE_DIR, "enel_pdf_sem_senha")
 PDF_ENEL_FILTRADO = os.path.join(BASE_DIR, "enel_filtrado.pdf")
 PDF_ENEL_COM_CODIGO = os.path.join(BASE_DIR, "enel_com_codigo.pdf")
 CSV_ENEL = os.path.join(BASE_DIR, "enel_consolidado.csv")
-
-SENHA_ENEL_PDF = "46523"
+SENHA_ENEL_PDF = os.getenv("SENHA_ENEL_PDF", "46523")
 
 os.makedirs(PASTA_SABESP, exist_ok=True)
 os.makedirs(PASTA_SABESP_SEM_SENHA, exist_ok=True)
 os.makedirs(PASTA_ENEL, exist_ok=True)
 os.makedirs(PASTA_ENEL_SEM_SENHA, exist_ok=True)
+
 
 # ================= UTIL =================
 def decodificar(texto):
@@ -87,26 +89,29 @@ def normalizar(texto):
 def normalizar_instalacao(valor):
     return valor.lstrip("0") if valor else ""
 
+
 # ================= PDF =================
 def tentar_remover_senha(caminho_entrada, caminho_saida, senhas):
-   
     reader = PdfReader(caminho_entrada)
-   
-    if reader.is_encrypted:
-        ok = False
-        for senha in senhas:
-            try:
-                if reader.decrypt(senha) != 0:
-                    ok = True
-                    break
-            except:
-                continue
-        if not ok:
-            return False
+
+    if not reader.is_encrypted:
+        shutil.copy2(caminho_entrada, caminho_saida)
+        return True
+
+    ok = False
+    for senha in senhas:
+        try:
+            if reader.decrypt(senha) != 0:
+                ok = True
+                break
+        except:
+            continue
+
+    if not ok:
+        return False
 
     writer = PdfWriter()
-    for page in reader.pages:
-        writer.add_page(page)
+    writer.append(reader)
 
     with open(caminho_saida, "wb") as f:
         writer.write(f)
@@ -114,26 +119,25 @@ def tentar_remover_senha(caminho_entrada, caminho_saida, senhas):
     return True
 
 def juntar_pdfs(lista_pdfs, pdf_saida):
-
     writer = PdfWriter()
 
     for caminho in lista_pdfs:
-
         if not os.path.exists(caminho):
-            print(f"Arquivo não encontrado: {caminho}")
+            print(f"[JUNTAR] Arquivo nao encontrado: {caminho}")
             continue
 
         try:
             reader = PdfReader(caminho)
-
             for page in reader.pages:
-                writer.add_page(page)
-
+                nova_pagina = writer.add_page(page)
+                nova_pagina.mediabox = page.mediabox
+                if "/CropBox" in page:
+                    nova_pagina.cropbox = page.cropbox
         except Exception as e:
-            print(f"Erro ao abrir {caminho}: {e}")
+            print(f"[JUNTAR] Erro ao abrir {caminho}: {e}")
 
     if len(writer.pages) == 0:
-        print("Nenhum PDF válido encontrado.")
+        print("[JUNTAR] Nenhum PDF valido encontrado.")
         return False
 
     with open(pdf_saida, "wb") as f:
@@ -142,53 +146,38 @@ def juntar_pdfs(lista_pdfs, pdf_saida):
     return True
 
 
-# ================= SABESP EXTRAÇÃO =================
+# ================= SABESP EXTRACAO =================
 def extrair_consumo_sabesp(texto):
-
     texto = re.sub(r"\s+", " ", texto)
 
-    m = re.search(
-        r"\d{2}/\d{2}/\d{2}\s+\d{2}/\d{2}/\d{2}\s+(\d{1,6})\s+\d{1,6}",
-        texto
-    )
+    m = re.search(r"\d{2}/\d{2}/\d{2}\s+\d{2}/\d{2}/\d{2}\s+(\d{1,6})\s+\d{1,6}", texto)
     if m:
         return m.group(1)
 
-    m = re.search(
-        r"\d{2}/\d{2}/\d{2}\s+\d{1,6}\s+(\d{1,6})\s+\d{1,6}",
-        texto
-    )
+    m = re.search(r"\d{2}/\d{2}/\d{2}\s+\d{1,6}\s+(\d{1,6})\s+\d{1,6}", texto)
     if m:
         return m.group(1)
 
-    m = re.search(
-        r"\d{2}/\d{2}/\d{2}.*?\d{1,6}\s+(\d{1,6})\s+\d{1,6}",
-        texto
-    )
+    m = re.search(r"\d{2}/\d{2}/\d{2}.*?\d{1,6}\s+(\d{1,6})\s+\d{1,6}", texto)
     if m:
         return m.group(1)
 
     return ""
 
 def extrair_fornecimento_sabesp(texto):
-
     m = re.search(r"\b(\d{9,16})\b", texto)
-
     if m:
         return m.group(1)
-
     return ""
 
-
 def extrair_dados_sabesp(pdf):
-
     registros = []
-    fornecimentos_lidos = set()
+    faturas_processadas = set()
 
     reader = PdfReader(pdf)
+    contador_sequencial = 1
 
     for i, page in enumerate(reader.pages):
-
         texto = page.extract_text() or ""
 
         if "FATURAMENTO" not in texto.upper():
@@ -196,34 +185,36 @@ def extrair_dados_sabesp(pdf):
 
         fornecimento = extrair_fornecimento_sabesp(texto)
 
-        if not fornecimento or fornecimento in fornecimentos_lidos:
+        vencimento_match = re.search(r'VENCIMENTO:\s*(\d{2}/\d{2}/\d{4})', texto)
+        vencimento = vencimento_match.group(1) if vencimento_match else ""
+
+        if not fornecimento:
             continue
 
-        vencimento = re.search(r'VENCIMENTO:\s*(\d{2}/\d{2}/\d{4})', texto)
-        vencimento = vencimento.group(1) if vencimento else ""
+        texto_upper = texto.upper()
+        m_total = re.search(r"TOTAL[\s\S]{0,60}?R\$[\s\*]*([\d.,]+)", texto_upper)
 
-        texto_limpo = texto.replace("*", "")
-
-        valores = re.findall(r"R\$\s*([\d.,]+)", texto_limpo)
-
-        if valores:
-
-            valores_float = [
-                float(v.replace(".", "").replace(",", "."))
-                for v in valores
-            ]
-
-            maior = max(valores_float)
-
-            valor = f"{maior:.2f}".replace(".", ",")
-
+        if m_total:
+            valor = m_total.group(1)
         else:
-            valor = ""
+            texto_limpo = texto.replace("*", "")
+            valores = re.findall(r"R\$\s*([\d.,]+)", texto_limpo)
+            if valores:
+                valores_float = [float(v.replace(".", "").replace(",", ".")) for v in valores]
+                maior = max(valores_float)
+                valor = f"{maior:.2f}".replace(".", ",")
+            else:
+                valor = ""
 
-        retencao = re.search(r'Retenção:\s*4,8%\s*([\d.,]+)', texto)
+        retencao = re.search(r'Reten.{1,3}o:\s*4,8%\s*([\d.,]+)', texto)
         retencao = retencao.group(1) if retencao else ""
 
         consumo = extrair_consumo_sabesp(texto)
+
+        id_fatura_completo = f"{fornecimento}_{vencimento}_{valor}_{consumo}"
+
+        if id_fatura_completo in faturas_processadas:
+            continue
 
         registros.append([
             f"Pagina {i+1}",
@@ -234,24 +225,13 @@ def extrair_dados_sabesp(pdf):
             retencao
         ])
 
-        fornecimentos_lidos.add(fornecimento)
+        faturas_processadas.add(id_fatura_completo)
+        contador_sequencial += 1
 
     with open(CSV_SABESP, "w", newline="", encoding="utf-8-sig") as f:
-
         writer = csv.writer(f, delimiter=";")
-
-        writer.writerow([
-            "Pagina",
-            "Fornecimento",
-            "Vencimento",
-            "Consumo_M3",
-            "Valor_Total",
-            "Retencao_4_8"
-        ])
-
+        writer.writerow(["Pagina", "Fornecimento", "Vencimento", "Consumo_M3", "Valor_Total", "Retencao_4_8"])
         writer.writerows(registros)
-
-
 
 
 # ================= PLANILHA =================
@@ -261,59 +241,49 @@ def carregar_mapa_instalacao_codigo():
 
     mapa = {}
     for linha in ws.iter_rows(min_row=2):
-        codigo = linha[1].value   # B
-        instalacao = linha[3].value  # D
-
+        codigo = linha[1].value
+        instalacao = linha[3].value
         if codigo and instalacao:
             mapa[normalizar_instalacao(str(instalacao))] = str(codigo)
 
-    print("Mapa instalação → código:", mapa)
+    print("Mapa instalacao -> codigo:", mapa)
     return mapa
 
 def carregar_mapa_fornecimento_codigo_sabesp():
-
     wb = load_workbook(PLANILHA_SABESP, data_only=True)
     ws = wb[ABA_SABESP]
 
     mapa = {}
-
     for linha in ws.iter_rows(min_row=2):
-
-        codigo = linha[1].value        # coluna B
-        fornecimento = linha[4].value  # coluna E
-
+        codigo = linha[1].value
+        fornecimento = linha[4].value
         if codigo and fornecimento:
-
             fornecimento = str(fornecimento).strip()
             mapa[fornecimento] = str(codigo)
 
-    print("Mapa SABESP fornecimento → código:", mapa)
-
+    print("Mapa SABESP fornecimento -> codigo:", mapa)
     return mapa
+
 
 # ================= ENEL =================
 def pagina_eh_fatura(texto):
     t = texto.lower()
 
-    # ❌ páginas que NÃO são fatura (cartas da Enel)
     palavras_excluir = [
         "faturamento a menor",
-        "ausência de faturamento",
+        "aus",
         "assunto:",
-        "olá",
         "parcelado em",
-        "diferença em relação",
+        "diferenca em relacao",
         "consumo acumulado",
-        "aqui, você pode acompanhar",
+        "aqui, voce pode acompanhar",
     ]
 
     for p in palavras_excluir:
         if p in t:
             return False
 
-    # ✅ critérios de fatura
     pontos = 0
-
     if "instala" in t or "uc" in t:
         pontos += 1
     if "vencimento" in t:
@@ -335,23 +305,30 @@ def filtrar_pdf_enel(pdf_entrada, pdf_saida):
         if pagina_eh_fatura(texto):
             writer.add_page(page)
 
+    if len(writer.pages) == 0:
+        raise ValueError("Nenhuma pagina de fatura encontrada no PDF da Enel apos filtro.")
+
     with open(pdf_saida, "wb") as f:
         writer.write(f)
 
 def extrair_instalacao(texto):
-    m = re.search(r"\b\d{8,12}\b", texto)
-    return normalizar_instalacao(m.group(0)) if m else ""
+    m_mte = re.search(r"\b(MTE[A-Z0-9]{5,15})\b", texto, re.IGNORECASE)
+    if m_mte:
+        return m_mte.group(1).upper()
+
+    m_num = re.search(r"\b\d{8,12}\b", texto)
+    if m_num:
+        return normalizar_instalacao(m_num.group(0))
+
+    return ""
 
 def extrair_referencia(texto, instalacao):
     if not instalacao:
         return ""
 
     t = re.sub(r"\s+", " ", texto)
-
-    # garante que instalação sem zero e com zero funcionem
     instalacao = instalacao.lstrip("0")
 
-    # procura instalação no texto
     pos = -1
     for padrao in [instalacao, instalacao.zfill(len(instalacao)+1)]:
         p = t.find(padrao)
@@ -360,38 +337,26 @@ def extrair_referencia(texto, instalacao):
             break
 
     area = t[pos:pos+500] if pos != -1 else t
-
-    # remove datas completas DD/MM/AAAA
     area = re.sub(r"\b\d{2}/\d{2}/\d{4}\b", "", area)
-
-    # procura MM/AAAA
     m = re.search(r"\b(0[1-9]|1[0-2])/[0-9]{4}\b", area)
 
     return m.group(0) if m else ""
 
-
-
 def extrair_total(texto):
-
     texto = texto.lower()
 
-    # REGRA 1 — se existir R$***** então valor é zero
     if re.search(r"r\$\s*\*+", texto):
         return "0,00"
 
-    # REGRA 2 — pegar valor numérico normalmente
     m = re.search(r"r\$\s*([\d.,]+)", texto)
-
     if m:
         return m.group(1)
 
     return ""
 
-
 def extrair_ir(texto):
     texto = texto.lower()
 
-    # padrão principal usado pela Enel
     m = re.search(
         r"ret\.\s*art\.\s*64\s*lei\s*9430\s*-\s*1[,\.]20%\s*(?:[\d.,]+\s*){0,3}(-?\d[\d.,]*)",
         texto
@@ -399,13 +364,11 @@ def extrair_ir(texto):
     if m:
         return m.group(1).replace("-", "")
 
-    # padrão alternativo (IRRF)
     m = re.search(r"irrf?\s*1[,\.]20\s*%\s*r?\$?\s*(-?\d[\d.,]*)", texto)
     if m:
         return m.group(1).replace("-", "")
 
     return "0,00"
-
 
 def extrair_consumo_enel(texto):
     texto = texto.upper()
@@ -415,17 +378,13 @@ def extrair_consumo_enel(texto):
         r"EN (CONSUMIDA|FORNECIDA)\s+(?:FAT\s+)?TU\s+KWH\s+([\d.,]+)",
         texto
     )
-
     if padrao_especial:
         for _, v in padrao_especial:
             numero = float(v.replace(".", "").replace(",", "."))
             valores.append(numero)
 
     if not valores:
-        m = re.search(
-            r"(?:CONSUMO|USO SIST\. DISTR\.) .*?KWH\s+([\d.,]+)",
-            texto
-        )
+        m = re.search(r"(?:CONSUMO|USO SIST\. DISTR\.) .*?KWH\s+([\d.,]+)", texto)
         if m:
             numero = float(m.group(1).replace(".", "").replace(",", "."))
             valores.append(numero)
@@ -435,7 +394,6 @@ def extrair_consumo_enel(texto):
 
     total = sum(valores)
     return f"{total:.2f}".replace(".", ",")
-
 
 def escrever_codigo_e_ordenar(pdf_entrada, pdf_saida, mapa):
     reader = PdfReader(pdf_entrada)
@@ -448,13 +406,31 @@ def escrever_codigo_e_ordenar(pdf_entrada, pdf_saida, mapa):
 
         if codigo:
             packet = BytesIO()
-            can = canvas.Canvas(packet)
+
+            if "/CropBox" in page:
+                del page["/CropBox"]
+
+            if "/CropBox" in page:
+                box = page["/CropBox"]
+            else:
+                box = page["/MediaBox"]
+
+            largura = float(box[2]) - float(box[0])
+            altura = float(box[3]) - float(box[1])
+
+            can = canvas.Canvas(packet, pagesize=(largura, altura))
             can.setFont("Helvetica-Bold", 12)
-            can.drawString(430, 800, f"CÓD: {codigo}")
+            can.drawString(largura - 150, altura - 45, f"COD: {codigo}")
             can.save()
+
             packet.seek(0)
             overlay = PdfReader(packet)
-            page.merge_page(overlay.pages[0])
+
+            page.merge_transformed_page(
+                overlay.pages[0],
+                [1, 0, 0, 1, 0, 0],
+                expand=False
+            )
 
         paginas.append((codigo or "99999", page))
 
@@ -468,56 +444,40 @@ def escrever_codigo_e_ordenar(pdf_entrada, pdf_saida, mapa):
         writer.write(f)
 
 def escrever_codigo_e_ordenar_sabesp(pdf_entrada, pdf_saida, mapa):
-
     reader = PdfReader(pdf_entrada)
-
     paginas = []
-
     codigo_atual = None
 
     for page in reader.pages:
-
         texto = page.extract_text() or ""
-
-        # se não conseguiu extrair texto, usa vazio
-        if not texto:
-            texto = ""
+        texto_upper = texto.upper()
 
         fornecimento = extrair_fornecimento_sabesp(texto)
 
-        # se encontrou fornecimento novo → atualiza código atual
-        if fornecimento and fornecimento in mapa:
+        if "FATURAMENTO" in texto_upper:
+            codigo_atual = None
+            if fornecimento and fornecimento in mapa:
+                codigo_atual = mapa[fornecimento]
+                print(f"Nova fatura -> Fornecimento: {fornecimento} -> Codigo: {codigo_atual}")
 
-            codigo_atual = mapa[fornecimento]
-
-            print(f"Fornecimento encontrado: {fornecimento} → Código: {codigo_atual}")
-
-        # usa código atual mesmo se página não tiver texto
         codigo = codigo_atual
 
-        # escreve código na página
         if codigo:
-
             packet = BytesIO()
+            largura = float(page.mediabox.width)
+            altura = float(page.mediabox.height)
 
-            can = canvas.Canvas(packet)
-
+            can = canvas.Canvas(packet, pagesize=(largura, altura))
             can.setFont("Helvetica-Bold", 12)
-
-            # posição mais alta (ajuste fino se quiser)
-            can.drawString(430, 820, f"CÓD: {codigo}")
-
+            can.drawString(largura - 150, altura - 30, f"COD: {codigo}")
             can.save()
 
             packet.seek(0)
-
             overlay = PdfReader(packet)
-
             page.merge_page(overlay.pages[0])
 
         paginas.append((codigo or "99999", page))
 
-    # ordenar páginas pelo código
     paginas.sort(
         key=lambda x: [
             int(s) if s.isdigit() else s
@@ -526,19 +486,16 @@ def escrever_codigo_e_ordenar_sabesp(pdf_entrada, pdf_saida, mapa):
     )
 
     writer = PdfWriter()
-
-    for _, page in paginas:
-        writer.add_page(page)
+    for _, page_ordered in paginas:
+        writer.add_page(page_ordered)
 
     with open(pdf_saida, "wb") as f:
         writer.write(f)
 
-
-
 def extrair_dados_enel(pdf):
     with open(CSV_ENEL, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f, delimiter=";")
-        writer.writerow(["Pagina","Instalacao","Referencia","Consumo_kWh","Total_Pagar","IR_1_20"])
+        writer.writerow(["Pagina", "Instalacao", "Referencia", "Consumo_kWh", "Total_Pagar", "IR_1_20"])
 
     reader = PdfReader(pdf)
 
@@ -562,236 +519,238 @@ def extrair_dados_enel(pdf):
                 extrair_ir(texto_norm)
             ])
 
+
 @app.post("/baixar-enel")
 def baixar_enel():
 
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
-    mail.login(EMAIL_ENEL, SENHA_ENEL)
-    mail.select("INBOX")
+    def gerador():
+        erros = []
+        processados = 0
 
-    status, mensagens = mail.search(None, "ALL")
+        yield "STATUS|Conectando ao servidor de e-mail da Enel...\n"
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        mail.login(EMAIL_ENEL, SENHA_ENEL)
+        mail.select("INBOX")
 
-    sem_senha = []
+        status, mensagens = mail.search(None, "ALL")
 
-    for num in mensagens[0].split():
+        if not mensagens[0]:
+            yield "CSV|Nenhum e-mail encontrado."
+            return
 
-        status, dados = mail.fetch(num, "(RFC822)")
-        msg = email.message_from_bytes(dados[0][1])
+        lista_emails = mensagens[0].split()
+        yield f"STATUS|Encontrados {len(lista_emails)} e-mails. Baixando anexos...\n"
 
-        remetente = msg.get("From", "").lower()
+        sem_senha = []
 
-        print("\n==========================")
-        print("Remetente encontrado:", remetente)
+        for num in lista_emails:
+            status, dados = mail.fetch(num, "(RFC822)")
+            msg = email.message_from_bytes(dados[0][1])
 
-        if REMETENTE_ENEL in remetente:
+            remetente = msg.get("From", "").lower()
+            assunto   = msg.get("Subject", "(sem assunto)")
 
-            print("EMAIL ENEL IDENTIFICADO")
+            print(f"\n{'='*60}")
+            print(f"[EMAIL #{num.decode()}]")
+            print(f"  De:      {remetente}")
+            print(f"  Assunto: {assunto}")
 
+            partes_encontradas = 0
             for parte in msg.walk():
+                content_type     = parte.get_content_type()
+                filename_raw     = parte.get_filename()          # pode estar encodado
+                filename_decoded = decodificar(filename_raw) if filename_raw else None
+                disposition      = str(parte.get("Content-Disposition", ""))
+                partes_encontradas += 1
 
-                content_type = parte.get_content_type()
-                disposition = parte.get_content_disposition()
-                filename = parte.get_filename()
+                print(f"  PARTE {partes_encontradas}: tipo={content_type} | filename_raw={filename_raw} | filename_decoded={filename_decoded}")
 
-                print("Tipo:", content_type)
-                print("Disposition:", disposition)
-                print("Arquivo:", filename)
+                if not filename_decoded:
+                    print(f"    -> Ignorado: sem filename")
+                    continue
 
-                if filename and filename.lower().endswith(".pdf"):
+                # ✅ CORREÇÃO PRINCIPAL: checa a extensão no nome JÁ DECODIFICADO
+                if not filename_decoded.lower().endswith(".pdf"):
+                    print(f"    -> Ignorado: nao e PDF ({filename_decoded})")
+                    continue
 
-                    nome = f"enel_{num.decode()}_{decodificar(filename)}"
+                nome = f"enel_{num.decode()}_{filename_decoded}"
+                caminho = os.path.join(PASTA_ENEL, nome)
+                caminho_sem_senha = os.path.join(PASTA_ENEL_SEM_SENHA, nome)
 
-                    caminho = os.path.join(PASTA_ENEL, nome)
-                    caminho_sem_senha = os.path.join(PASTA_ENEL_SEM_SENHA, nome)
+                print(f"    -> PDF detectado: {nome}")
+                print(f"    -> Ja existe em enel_pdf?   {os.path.exists(caminho)}")
+                print(f"    -> Ja existe sem senha?      {os.path.exists(caminho_sem_senha)}")
 
-                    print("Salvando:", caminho)
+                if not os.path.exists(caminho):
+                    with open(caminho, "wb") as f:
+                        f.write(parte.get_payload(decode=True))
+                    print(f"    -> Baixado para enel_pdf")
 
-                    if not os.path.exists(caminho):
+                if not os.path.exists(caminho_sem_senha):
+                    print(f"    -> Tentando remover senha: '{SENHA_ENEL_PDF}'")
+                    ok = tentar_remover_senha(caminho, caminho_sem_senha, [SENHA_ENEL_PDF])
+                    if not ok:
+                        erros.append(f"Falha ao remover senha do arquivo: {nome}")
+                        print(f"    -> FALHA ao remover senha")
+                        continue
+                    print(f"    -> Senha removida com sucesso")
 
-                        with open(caminho, "wb") as f:
-                            f.write(parte.get_payload(decode=True))
+                if os.path.exists(caminho_sem_senha):
+                    sem_senha.append(caminho_sem_senha)
+                    processados += 1
+                    print(f"    -> Adicionado a lista sem_senha (total acumulado: {len(sem_senha)})")
+                else:
+                    print(f"    -> ERRO: arquivo sem senha nao existe apos processamento")
 
-                    if not os.path.exists(caminho_sem_senha):
+            print(f"  [FIM EMAIL #{num.decode()}] Partes analisadas: {partes_encontradas}")
 
-                        ok = tentar_remover_senha(
-                            caminho,
-                            caminho_sem_senha,
-                            [SENHA_ENEL_PDF]
-                        )
+        mail.logout()
 
-                        if not ok:
-                            print("Falha ao remover senha:", nome)
-                            continue
+        print(f"\n{'='*60}")
+        print(f"[RESUMO] PDFs na lista sem_senha: {len(sem_senha)}")
+        print(f"[RESUMO] Arquivos em PASTA_ENEL_SEM_SENHA:")
+        for arq in os.listdir(PASTA_ENEL_SEM_SENHA):
+            print(f"  - {arq}")
+        print(f"{'='*60}\n")
 
-                    if os.path.exists(caminho_sem_senha):
+        yield "STATUS|Juntando os PDFs em um unico arquivo...\n"
 
-                        sem_senha.append(caminho_sem_senha)
-
-    mail.logout()
-
-    # incluir PDFs já existentes
-    for arquivo in os.listdir(PASTA_ENEL_SEM_SENHA):
-
-        caminho = os.path.join(PASTA_ENEL_SEM_SENHA, arquivo)
-
-        if caminho.lower().endswith(".pdf"):
-
-            if caminho not in sem_senha:
+        for arquivo in os.listdir(PASTA_ENEL_SEM_SENHA):
+            caminho = os.path.join(PASTA_ENEL_SEM_SENHA, arquivo)
+            if caminho.lower().endswith(".pdf") and caminho not in sem_senha:
                 sem_senha.append(caminho)
+                print(f"[JUNTAR] Adicionado da pasta (execucao anterior): {arquivo}")
 
-    # juntar PDFs
-    pdf_unico = os.path.join(BASE_DIR, "enel_completo.pdf")
+        print(f"[JUNTAR] Total de PDFs para juntar: {len(sem_senha)}")
 
-    sucesso = juntar_pdfs(sem_senha, pdf_unico)
+        pdf_unico = os.path.join(BASE_DIR, "enel_completo.pdf")
+        sucesso = juntar_pdfs(sem_senha, pdf_unico)
 
-    if not sucesso:
-        return {"erro": "Nenhum PDF ENEL encontrado"}
+        if not sucesso:
+            yield "CSV|Nenhum PDF ENEL encontrado"
+            return
 
-    # filtrar
-    filtrar_pdf_enel(pdf_unico, PDF_ENEL_FILTRADO)
+        yield "STATUS|Filtrando paginas que nao sao faturas (cartas, avisos)...\n"
 
-    # inserir código
-    mapa = carregar_mapa_instalacao_codigo()
+        try:
+            filtrar_pdf_enel(pdf_unico, PDF_ENEL_FILTRADO)
+        except ValueError as e:
+            yield f"CSV|{e}"
+            return
 
-    escrever_codigo_e_ordenar(
-        PDF_ENEL_FILTRADO,
-        PDF_ENEL_COM_CODIGO,
-        mapa
-    )
+        yield "STATUS|Analisando layout e escrevendo os codigos de instalacao...\n"
+        mapa = carregar_mapa_instalacao_codigo()
+        escrever_codigo_e_ordenar(PDF_ENEL_FILTRADO, PDF_ENEL_COM_CODIGO, mapa)
 
-    # gerar CSV
-    extrair_dados_enel(PDF_ENEL_COM_CODIGO)
+        yield "STATUS|Extraindo valores, consumos e gerando a planilha...\n"
+        extrair_dados_enel(PDF_ENEL_COM_CODIGO)
 
-    from fastapi.responses import Response
+        with open(CSV_ENEL, "r", encoding="utf-8-sig") as f:
+            conteudo = f.read()
 
-    with open(CSV_ENEL, "r", encoding="utf-8-sig") as f:
-        conteudo = f.read()
+        resumo = f"{processados} faturas processadas com sucesso"
+        if erros:
+            resumo += f"\n{len(erros)} faturas com erro"
 
-    return Response(
-        content=conteudo,
-        media_type="text/plain; charset=utf-8"
-    )
+        conteudo_final = resumo + "\n\n"
+        if erros:
+            conteudo_final += "\n".join(erros) + "\n\n"
+        conteudo_final += conteudo
+
+        yield "STATUS|Finalizando e enviando dados para a tela...\n"
+        yield f"CSV|{conteudo_final}"
+
+    return StreamingResponse(gerador(), media_type="text/plain; charset=utf-8")
+
 
 # ================= ENDPOINT SABESP =================
 @app.post("/baixar-sabesp")
 def baixar_sabesp():
 
-    erros = []
-    processados = 0
+    def gerador():
+        erros = []
+        processados = 0
 
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
-    mail.login(EMAIL_SABESP, SENHA_SABESP)
-    mail.select("INBOX")
+        yield "STATUS|Conectando ao servidor de e-mail da Sabesp...\n"
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        mail.login(EMAIL_SABESP, SENHA_SABESP)
+        mail.select("INBOX")
 
-    status, mensagens = mail.search(None, "ALL")
+        status, mensagens = mail.search(None, "ALL")
+        lista_emails = mensagens[0].split()
 
-    sem_senha = []
+        yield f"STATUS|Encontrados {len(lista_emails)} e-mails. Baixando anexos...\n"
+        sem_senha = []
 
-    for num in mensagens[0].split():
+        for num in lista_emails:
+            status, dados = mail.fetch(num, "(RFC822)")
+            msg = email.message_from_bytes(dados[0][1])
+            remetente_email = parseaddr(msg.get("From"))[1].lower()
 
-        status, dados = mail.fetch(num, "(RFC822)")
-        msg = email.message_from_bytes(dados[0][1])
+            if remetente_email in REMETENTES_SABESP:
+                for parte in msg.walk():
+                    filename_raw     = parte.get_filename()
+                    filename_decoded = decodificar(filename_raw) if filename_raw else None
 
-        remetente_email = parseaddr(msg.get("From"))[1].lower()
+                    if not filename_decoded or not filename_decoded.lower().endswith(".pdf"):
+                        continue
 
-        if remetente_email in REMETENTES_SABESP:
-
-            print("EMAIL ACEITO PELO SISTEMA")
-
-            for parte in msg.walk():
-
-                print("TIPO:", parte.get_content_type())
-                print("DISPOSITION:", parte.get_content_disposition())
-                print("ARQUIVO:", parte.get_filename())
-                print("----------------------------")
-
-                filename = parte.get_filename()
-
-                if filename and filename.lower().endswith(".pdf"):
-
-                    nome = f"sabesp_{num.decode()}_{decodificar(parte.get_filename() or 'fatura.pdf')}"
-
+                    nome = f"sabesp_{num.decode()}_{filename_decoded}"
                     caminho = os.path.join(PASTA_SABESP, nome)
                     caminho_sem_senha = os.path.join(PASTA_SABESP_SEM_SENHA, nome)
 
                     if not os.path.exists(caminho):
-
                         with open(caminho, "wb") as f:
                             f.write(parte.get_payload(decode=True))
 
                     if not os.path.exists(caminho_sem_senha):
-
-                        ok = tentar_remover_senha(
-                            caminho,
-                            caminho_sem_senha,
-                            SENHAS_SABESP
-                        )
-
+                        ok = tentar_remover_senha(caminho, caminho_sem_senha, SENHAS_SABESP)
                         if not ok:
-                            
-                            erro_msg = f"❌ Falha ao remover senha do arquivo: {nome}"
-
-                            print(erro_msg)
-
-                            erros.append(erro_msg)
-
+                            erros.append(f"Falha ao remover senha do arquivo: {nome}")
                             continue
 
                     if os.path.exists(caminho_sem_senha):
                         sem_senha.append(caminho_sem_senha)
                         processados += 1
 
-    mail.logout()
+        mail.logout()
 
-    for arquivo in os.listdir(PASTA_SABESP_SEM_SENHA):
-
-        caminho = os.path.join(PASTA_SABESP_SEM_SENHA, arquivo)
-
-        if caminho.lower().endswith(".pdf"):
-
-            if caminho not in sem_senha:
+        yield "STATUS|Juntando os PDFs em um unico arquivo...\n"
+        for arquivo in os.listdir(PASTA_SABESP_SEM_SENHA):
+            caminho = os.path.join(PASTA_SABESP_SEM_SENHA, arquivo)
+            if caminho.lower().endswith(".pdf") and caminho not in sem_senha:
                 sem_senha.append(caminho)
 
-    sucesso = juntar_pdfs(sem_senha, PDF_SABESP_COMPLETO)
+        sucesso = juntar_pdfs(sem_senha, PDF_SABESP_COMPLETO)
 
-    if not sucesso:
-        return {"erro": "Nenhum PDF válido encontrado"}
+        if not sucesso:
+            yield "CSV|Nenhum PDF valido encontrado"
+            return
 
-    # carregar mapa
-    mapa = carregar_mapa_fornecimento_codigo_sabesp()
+        yield "STATUS|Analisando layout e escrevendo os codigos de instalacao...\n"
+        mapa = carregar_mapa_fornecimento_codigo_sabesp()
+        escrever_codigo_e_ordenar_sabesp(PDF_SABESP_COMPLETO, PDF_SABESP_COM_CODIGO, mapa)
 
-    # escrever código e ordenar
-    escrever_codigo_e_ordenar_sabesp(
-        PDF_SABESP_COMPLETO,
-        PDF_SABESP_COM_CODIGO,
-        mapa
-    )
+        yield "STATUS|Extraindo valores, consumos e gerando a planilha...\n"
+        extrair_dados_sabesp(PDF_SABESP_COM_CODIGO)
 
-    # extrair dados normalmente
-    extrair_dados_sabesp(PDF_SABESP_COM_CODIGO)
+        with open(CSV_SABESP, "r", encoding="utf-8-sig") as f:
+            conteudo = f.read()
 
-    from fastapi.responses import Response
+        resumo = f"{processados} faturas processadas com sucesso"
+        if erros:
+            resumo += f"\n{len(erros)} faturas com erro"
 
-    with open(CSV_SABESP, "r", encoding="utf-8-sig") as f:
-        conteudo = f.read()
+        conteudo_final = resumo + "\n\n"
+        if erros:
+            conteudo_final += "\n".join(erros) + "\n\n"
+        conteudo_final += conteudo
 
-    resumo = f"✅ {processados} faturas processadas com sucesso"
+        yield "STATUS|Finalizando e enviando dados para a tela...\n"
+        yield f"CSV|{conteudo_final}"
 
-    if erros:
-        resumo += f"\n❌ {len(erros)} faturas com erro"
-
-    conteudo_final = resumo + "\n\n"
-
-    if erros:
-        conteudo_final += "\n".join(erros) + "\n\n"
-
-    conteudo_final += conteudo
-
-
-    return Response(
-        content=conteudo_final,
-        media_type="text/plain; charset=utf-8"
-    )
+    return StreamingResponse(gerador(), media_type="text/plain; charset=utf-8")
 
 
 # ================= FRONT =================
