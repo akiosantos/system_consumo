@@ -41,11 +41,11 @@ ABA_SABESP = "SABESP 2026"
 PDF_SABESP_COM_CODIGO = os.path.join(BASE_DIR, "sabesp_com_codigo.pdf")
 
 # ===== SABESP =====
-EMAIL_SABESP = os.getenv("EMAIL_SABESP", "financas.sabesp@barueri.sp.gov.br")
-SENHA_SABESP = os.getenv("SENHA_SABESP", "Sabesp2024@")
+EMAIL_SABESP = os.getenv("EMAIL_SABESP", "e-mail")
+SENHA_SABESP = os.getenv("SENHA_SABESP", "sua senha")
 REMETENTES_SABESP = [
-    "fatura_sabesp@sabesp.com.br",
-    "assessoriatecnica.lucasakio@barueri.sp.gov.br"
+    "e-mail remetente",
+    "e-mail remetente"
 ]
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
@@ -55,11 +55,11 @@ PDF_SABESP_COMPLETO = os.path.join(BASE_DIR, "sabesp_completo.pdf")
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = os.getenv("EMAIL_ENEL", "sf.contasdeconsumo@barueri.sp.gov.br")
-SENHA_ENEL = os.getenv("SENHA_ENEL", "Contab.23@")
+EMAIL_ENEL = os.getenv("EMAIL_ENEL", "e-mail")
+SENHA_ENEL = os.getenv("SENHA_ENEL", "sua senha")
 REMETENTE_ENEL = [
-    "brasil.enel.com",
-    "assessoriatecnica.lucasakio@barueri.sp.gov.br"
+    "e-mail remetente",
+    "e-mail remetente"
 ]
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
