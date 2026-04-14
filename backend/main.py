@@ -41,11 +41,11 @@ ABA_SABESP = "SABESP 2026"
 PDF_SABESP_COM_CODIGO = os.path.join(BASE_DIR, "sabesp_com_codigo.pdf")
 
 # ===== SABESP =====
-EMAIL_SABESP = os.getenv("EMAIL_SABESP", "seu_email")
-SENHA_SABESP = os.getenv("SENHA_SABESP", "sua_senha")
+EMAIL_SABESP = os.getenv("EMAIL_SABESP", "financas.sabesp@barueri.sp.gov.br")
+SENHA_SABESP = os.getenv("SENHA_SABESP", "Sabesp2024@")
 REMETENTES_SABESP = [
-    "e-mail_remetente1r",
-    "e-mail_remetente2"
+    "fatura_sabesp@sabesp.com.br",
+    "assessoriatecnica.lucasakio@barueri.sp.gov.br"
 ]
 
 PASTA_SABESP = os.path.join(BASE_DIR, "sabesp_pdf")
@@ -55,11 +55,11 @@ PDF_SABESP_COMPLETO = os.path.join(BASE_DIR, "sabesp_completo.pdf")
 SENHAS_SABESP = ["465", "MIG"]
 
 # ===== ENEL =====
-EMAIL_ENEL = os.getenv("EMAIL_ENEL", "seu_email")
-SENHA_ENEL = os.getenv("SENHA_ENEL", "sua_senha")
+EMAIL_ENEL = os.getenv("EMAIL_ENEL", "sf.contasdeconsumo@barueri.sp.gov.br")
+SENHA_ENEL = os.getenv("SENHA_ENEL", "Contab.23@")
 REMETENTE_ENEL = [
-    "e-mail_remetente1",
-    "e-mail_remetente2"
+    "brasil.enel.com",
+    "assessoriatecnica.lucasakio@barueri.sp.gov.br"
 ]
 
 PASTA_ENEL = os.path.join(BASE_DIR, "enel_pdf")
@@ -144,6 +144,76 @@ def juntar_pdfs(lista_pdfs, pdf_saida):
         writer.write(f)
 
     return True
+
+# ================= DEDUPLICAÇÃO SABESP =================
+def deduplificar_pdf_sabesp(pdf_entrada, pdf_saida):
+    """
+    Lê o PDF completo, agrupa páginas por fatura (bloco iniciado por 'FATURAMENTO'),
+    e escreve apenas um bloco por combinação única de fornecimento+vencimento+valor.
+    """
+    reader = PdfReader(pdf_entrada)
+    
+    # 1. Agrupa páginas em blocos de fatura
+    blocos = []       # cada item: {"chave": str, "paginas": [page, ...]}
+    bloco_atual = None
+
+    for page in reader.pages:
+        texto = page.extract_text() or ""
+        texto_upper = texto.upper()
+
+        if "FATURAMENTO" in texto_upper:
+            # Extrai dados de identificação da fatura
+            fornecimento = extrair_fornecimento_sabesp(texto)
+            
+            venc = re.search(r'VENCIMENTO:\s*(\d{2}/\d{2}/\d{4})', texto)
+            vencimento = venc.group(1) if venc else ""
+
+            texto_upper2 = texto.upper()
+            m_total = re.search(r"TOTAL[\s\S]{0,60}?R\$[\s\*]*([\d.,]+)", texto_upper2)
+            if m_total:
+                valor = m_total.group(1)
+            else:
+                texto_limpo = texto.replace("*", "")
+                valores = re.findall(r"R\$\s*([\d.,]+)", texto_limpo)
+                if valores:
+                    valores_float = [float(v.replace(".", "").replace(",", ".")) for v in valores]
+                    valor = f"{max(valores_float):.2f}".replace(".", ",")
+                else:
+                    valor = ""
+
+            chave = f"{fornecimento}_{vencimento}_{valor}"
+            bloco_atual = {"chave": chave, "paginas": [page]}
+            blocos.append(bloco_atual)
+        else:
+            # Página de continuação (código de barras, etc.)
+            if bloco_atual is not None:
+                bloco_atual["paginas"].append(page)
+            # Se não há bloco_atual (página solta no início), ignora
+
+    # 2. Filtra blocos únicos, mantendo a primeira ocorrência
+    vistos = set()
+    writer = PdfWriter()
+    duplicatas = 0
+
+    for bloco in blocos:
+        chave = bloco["chave"]
+        if chave in vistos:
+            print(f"[DEDUP] Duplicata removida: {chave}")
+            duplicatas += 1
+            continue
+        vistos.add(chave)
+        for page in bloco["paginas"]:
+            writer.add_page(page)
+
+    print(f"[DEDUP] Total de blocos: {len(blocos)} | Duplicatas removidas: {duplicatas} | Únicos: {len(vistos)}")
+
+    if len(writer.pages) == 0:
+        raise ValueError("Nenhuma fatura única encontrada após deduplicação.")
+
+    with open(pdf_saida, "wb") as f:
+        writer.write(f)
+
+    return duplicatas
 
 
 # ================= SABESP EXTRACAO =================
@@ -569,7 +639,6 @@ def baixar_enel():
                     print(f"    -> Ignorado: sem filename")
                     continue
 
-                # ✅ CORREÇÃO PRINCIPAL: checa a extensão no nome JÁ DECODIFICADO
                 if not filename_decoded.lower().endswith(".pdf"):
                     print(f"    -> Ignorado: nao e PDF ({filename_decoded})")
                     continue
@@ -665,6 +734,7 @@ def baixar_enel():
 
 
 # ================= ENDPOINT SABESP =================
+
 @app.post("/baixar-sabesp")
 def baixar_sabesp():
 
@@ -728,9 +798,19 @@ def baixar_sabesp():
             yield "CSV|Nenhum PDF valido encontrado"
             return
 
+        PDF_SABESP_SEM_DUP = os.path.join(BASE_DIR, "sabesp_sem_duplicatas.pdf")
+        yield "STATUS|Verificando e removendo faturas duplicadas...\n"
+        try:
+            duplicatas = deduplificar_pdf_sabesp(PDF_SABESP_COMPLETO, PDF_SABESP_SEM_DUP)
+            if duplicatas > 0:
+                yield f"STATUS|{duplicatas} fatura(s) duplicada(s) removida(s).\n"
+        except ValueError as e:
+            yield f"CSV|{e}"
+            return
+
         yield "STATUS|Analisando layout e escrevendo os codigos de instalacao...\n"
         mapa = carregar_mapa_fornecimento_codigo_sabesp()
-        escrever_codigo_e_ordenar_sabesp(PDF_SABESP_COMPLETO, PDF_SABESP_COM_CODIGO, mapa)
+        escrever_codigo_e_ordenar_sabesp(PDF_SABESP_SEM_DUP, PDF_SABESP_COM_CODIGO, mapa)
 
         yield "STATUS|Extraindo valores, consumos e gerando a planilha...\n"
         extrair_dados_sabesp(PDF_SABESP_COM_CODIGO)
@@ -751,7 +831,6 @@ def baixar_sabesp():
         yield f"CSV|{conteudo_final}"
 
     return StreamingResponse(gerador(), media_type="text/plain; charset=utf-8")
-
 
 # ================= FRONT =================
 app.mount("/", StaticFiles(directory=FRONT_DIR, html=True), name="frontend")
