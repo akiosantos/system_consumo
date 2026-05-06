@@ -172,8 +172,8 @@ Desenvolvido por **Lucas Akio**.
 
 ### 🌐 Redes
 
-- GitHub: https://github.com/
-- LinkedIn: https://linkedin.com/
+- GitHub: https://github.com/akiosantos
+- LinkedIn: https://www.linkedin.com/in/lucasakio/
 
 ---
 
