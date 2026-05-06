@@ -119,7 +119,7 @@ Com isso, o projeto contribui para:
 ## 1️⃣ Clone o repositório
 
 ```bash
-git clone https://github.com/seu-usuario/seu-repositorio.git
+git clone https://github.com/akiosantos/system_consumo.git
 ```
 
 ---
@@ -127,7 +127,7 @@ git clone https://github.com/seu-usuario/seu-repositorio.git
 ## 2️⃣ Acesse a pasta do projeto
 
 ```bash
-cd nome-do-projeto
+cd system_consumo
 ```
 
 ---
