@@ -66,9 +66,6 @@ A proposta do projeto é reduzir o trabalho manual em planilhas, diminuir erros 
 - **JavaScript**
 - **Bootstrap**
 
-## 🗄️ Banco de Dados
-
-- **SQL Server**
 
 ## ⚙️ Ferramentas
 
@@ -90,8 +87,6 @@ O sistema trabalha com dados como:
 | RGI | Registro Geral do Imóvel |
 | Fornecimento | Número de fornecimento |
 | Sigla | Unidade responsável |
-| Local | Local de consumo |
-| Endereço | Endereço do imóvel |
 | Valor Bruto | Valor total da fatura |
 | IR | Impostos |
 | Valor Líquido | Valor final |
@@ -130,18 +125,7 @@ git clone https://github.com/akiosantos/system_consumo.git
 cd system_consumo
 ```
 
----
-
-## 3️⃣ Configure o banco de dados
-
-- Instale o SQL Server
-- Crie o banco de dados
-- Execute os scripts SQL
-- Configure a string de conexão
-
----
-
-## 4️⃣ Execute o projeto
+## 3️⃣ Execute o projeto
 
 ### ASP.NET
 
